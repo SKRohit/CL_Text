@@ -149,6 +149,7 @@ def cl_forward(cls,encoder,input_ids=None,attention_mask=None,token_type_ids=Non
         ):
 
     return_dict = return_dict if return_dict is not None else cls.config.use_return_dict
+    mlm_outputs = None
 
     if not sent_emb:
         ori_input_ids = input_ids
@@ -156,7 +157,6 @@ def cl_forward(cls,encoder,input_ids=None,attention_mask=None,token_type_ids=Non
         # Number of sentences in one instance. 2: instance with augmentation; 3: instance with augmentation and hard negative
         num_sent = input_ids.size(1)
 
-        mlm_outputs = None
         # Flatten input for encoding
         input_ids = input_ids.view((-1, input_ids.size(-1))) # (bs * num_sent, len)
         attention_mask = attention_mask.view((-1, attention_mask.size(-1))) # (bs * num_sent, len)
@@ -165,37 +165,31 @@ def cl_forward(cls,encoder,input_ids=None,attention_mask=None,token_type_ids=Non
 
         if mlm_input_ids is not None:
             mlm_input_ids = mlm_input_ids.view((-1, mlm_input_ids.size(-1)))
-            mlm_outputs = encoder(
-                    mlm_input_ids,
-                    attention_mask=attention_mask,
-                    token_type_ids=token_type_ids,
-                    position_ids=position_ids,
-                    head_mask=head_mask,
-                    inputs_embeds=inputs_embeds,
-                    output_attentions=output_attentions,
+            mlm_outputs = encoder(mlm_input_ids,attention_mask=attention_mask,
+                    token_type_ids=token_type_ids,position_ids=position_ids,
+                    head_mask=head_mask,inputs_embeds=inputs_embeds,
+                    output_attentions=output_attentions,return_dict=True,
                     output_hidden_states=True if cls.model_args.pooler_type in ['avg_top2', 'avg_first_last'] else False,
-                    return_dict=True,
                 )
             mlm_outputs = cls.lm_head(mlm_outputs.last_hidden_state)
 
     outputs = encoder(
-                input_ids,
-                attention_mask=attention_mask,
-                token_type_ids=token_type_ids,
-                position_ids=position_ids,
-                head_mask=head_mask,
-                inputs_embeds=inputs_embeds,
-                output_attentions=output_attentions,
+                input_ids,attention_mask=attention_mask,token_type_ids=token_type_ids,
+                position_ids=position_ids,head_mask=head_mask,inputs_embeds=inputs_embeds,
+                output_attentions=output_attentions,return_dict=True,
                 output_hidden_states=True if cls.model_args.pooler_type in ['avg_top2', 'avg_first_last'] else False,
-                return_dict=True,
             )
 
     pooler_output = cls.pooler(attention_mask, outputs)
-    pooler_output = pooler_output.view((batch_size, num_sent, pooler_output.size(-1))) # (bs, num_sent, hidden)
 
-    if cls.model_args.pooler_type == "cls" and not cls.model_args.mlp_only_train:
+    if not sent_emb:
+        pooler_output = pooler_output.view((batch_size, num_sent, pooler_output.size(-1))) # (bs, num_sent, hidden)
+
+    if sent_emb:
+        if cls.model_args.pooler_type == "cls" and not cls.model_args.mlp_only_train:
+            pooler_output = cls.mlp(pooler_output)
+    elif cls.model_args.pooler_type == "cls":
         pooler_output = cls.mlp(pooler_output)
-    
 
     if not return_dict:
         return (outputs[0], pooler_output) + (mlm_outputs,) + outputs[2:] 

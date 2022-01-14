@@ -171,7 +171,7 @@ def cl_forward(cls,encoder,input_ids=None,attention_mask=None,token_type_ids=Non
                     output_attentions=output_attentions,return_dict=True,
                     output_hidden_states=True if cls.model_args.pooler_type in ['avg_top2', 'avg_first_last'] else False,
                 )
-            mlm_outputs = cls.lm_head(mlm_outputs.last_hidden_state)
+            mlm_outputs = cls.lm_head(mlm_outputs.last_hidden_state).view(-1, cls.config.vocab_size)
 
     outputs = encoder(
                 input_ids,attention_mask=attention_mask,token_type_ids=token_type_ids,

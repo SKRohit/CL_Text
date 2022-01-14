@@ -87,25 +87,24 @@ def entropy(x, input_as_probabilities):
 
 
 class SimCSELoss(nn.Module):
-    def __init__(self, temp, device='cpu'):
+    def __init__(self, temp, device='cpu', mlm_weight=0.1):
         super(SimCSELoss, self).__init__()
         self.temp = temp
         self.device = device
+        self.mlm_weight = mlm_weight
         self.cos = nn.CosineSimilarity(dim=-1)
         self.loss = nn.CrossEntropyLoss()
     
-    def forward(self, features):
+    def forward(self, features, mlm_features=None, mlm_labels=None):
         """
-        Loss function during self-labeling
-
-        input: logits for original samples and for its strong augmentations 
-        output: cross entropy 
         """
         # pooler_output = pooler_output.view((batch_size, num_sent, pooler_output.size(-1)))
         z1, z2 = features[:,0], features[:,1]
         cos_sim = self.cos(z1.unsqueeze(1), z2.unsqueeze(0))
         labels = torch.arange(cos_sim.size(0)).long().to(self.device)
         loss = self.loss(cos_sim, labels)
+        if mlm_features and mlm_labels:
+            loss = loss + self.mlm_weight * self.loss(mlm_features, mlm_labels.view(-1))
         return loss
 
 

@@ -131,10 +131,13 @@ def cl_init(cls, config):
     """
     Contrastive learning class init function.
     """
-    if not hasattr(cls, "pooler"):
-        # cls.pooler_type = cls.model_args.pooler_type
-        cls.pooler = Pooler(cls.model_args.pooler_type)
+    
+    # cls.pooler_type = cls.model_args.pooler_type
+    cls.pooler = Pooler(cls.model_args.pooler_type)
     if cls.model_args.pooler_type == "cls":
+        if hasattr(cls, "model"):
+            cls.mlp = cls.model.pooler
+            cls.model.pooler = None
         cls.mlp = MLPLayer(config)
     cls.init_weights()
 
@@ -156,7 +159,7 @@ def cl_forward(cls,encoder,input_ids=None,attention_mask=None,token_type_ids=Non
         mlm_outputs = None
         # Flatten input for encoding
         input_ids = input_ids.view((-1, input_ids.size(-1))) # (bs * num_sent, len)
-        attention_mask = attention_mask.view((-1, attention_mask.size(-1))) # (bs * num_sent len)
+        attention_mask = attention_mask.view((-1, attention_mask.size(-1))) # (bs * num_sent, len)
         if token_type_ids is not None:
             token_type_ids = token_type_ids.view((-1, token_type_ids.size(-1))) # (bs * num_sent, len)
 
@@ -202,7 +205,7 @@ def cl_forward(cls,encoder,input_ids=None,attention_mask=None,token_type_ids=Non
         pooler_output=pooler_output,
         last_hidden_state=outputs.last_hidden_state,
         hidden_states=outputs.hidden_states,
-    )
+        )
 
 class PretrainedSimCSEForCL(SimCSEPreTrainedModel):
     _keys_to_ignore_on_load_missing = [r"position_ids"]
@@ -219,10 +222,7 @@ class PretrainedSimCSEForCL(SimCSEPreTrainedModel):
                 self.lm_head = RobertaLMHead(config)
             else:
                 raise Exception("Please choose a pretrained SimCSE model shared by princeton-nlp.")
-        
-        self.pooler = self.model.pooler
-        delattr(self.model, "pooler")
-        
+
         cl_init(self, config)
 
     def forward(self,input_ids=None,attention_mask=None,token_type_ids=None,
@@ -231,7 +231,7 @@ class PretrainedSimCSEForCL(SimCSEPreTrainedModel):
         sent_emb=False,mlm_input_ids=None,
         ):
 
-        cl_forward(self,self.model,input_ids=input_ids,attention_mask=attention_mask,
+        return cl_forward(self,self.model,input_ids=input_ids,attention_mask=attention_mask,
             token_type_ids=token_type_ids, position_ids=position_ids,head_mask=head_mask,
             inputs_embeds=inputs_embeds,labels=labels,output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,sent_emb=sent_emb,
@@ -257,7 +257,7 @@ class BertForCL(BertPreTrainedModel):
         sent_emb=False,mlm_input_ids=None,
         ):
 
-        cl_forward(self,self.bert,input_ids=input_ids,attention_mask=attention_mask,
+        return cl_forward(self,self.bert,input_ids=input_ids,attention_mask=attention_mask,
             token_type_ids=token_type_ids, position_ids=position_ids,head_mask=head_mask,
             inputs_embeds=inputs_embeds,labels=labels,output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,sent_emb=sent_emb,
@@ -282,7 +282,7 @@ class RobertaForCL(RobertaPreTrainedModel):
         head_mask=None,inputs_embeds=None,labels=None,output_attentions=None,
         output_hidden_states=None,return_dict=None,sent_emb=False,mlm_input_ids=None,
         ):
-        cl_forward(self,self.roberta,input_ids=input_ids,attention_mask=attention_mask,
+        return cl_forward(self,self.roberta,input_ids=input_ids,attention_mask=attention_mask,
             token_type_ids=token_type_ids, position_ids=position_ids,head_mask=head_mask,
             inputs_embeds=inputs_embeds,labels=labels,output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,sent_emb=sent_emb,

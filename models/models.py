@@ -222,7 +222,7 @@ class PretrainedSimCSEForCL(SimCSEPreTrainedModel):
     def forward(self,input_ids=None,attention_mask=None,token_type_ids=None,
         position_ids=None,head_mask=None,inputs_embeds=None,labels=None,
         output_attentions=None,output_hidden_states=None,return_dict=None,
-        sent_emb=False,mlm_input_ids=None,
+        sent_emb=False,mlm_input_ids=None,mlm_labels=None,
         ):
 
         return cl_forward(self,self.model,input_ids=input_ids,attention_mask=attention_mask,
@@ -248,7 +248,7 @@ class BertForCL(BertPreTrainedModel):
     def forward(self,input_ids=None,attention_mask=None,token_type_ids=None,
         position_ids=None,head_mask=None,inputs_embeds=None,labels=None,
         output_attentions=None,output_hidden_states=None,return_dict=None,
-        sent_emb=False,mlm_input_ids=None,
+        sent_emb=False,mlm_input_ids=None,mlm_labels=None,
         ):
 
         return cl_forward(self,self.bert,input_ids=input_ids,attention_mask=attention_mask,
@@ -274,7 +274,7 @@ class RobertaForCL(RobertaPreTrainedModel):
 
     def forward(self,input_ids=None,attention_mask=None,token_type_ids=None,position_ids=None,
         head_mask=None,inputs_embeds=None,labels=None,output_attentions=None,
-        output_hidden_states=None,return_dict=None,sent_emb=False,mlm_input_ids=None,
+        output_hidden_states=None,return_dict=None,sent_emb=False,mlm_input_ids=None,mlm_labels=None,
         ):
         return cl_forward(self,self.roberta,input_ids=input_ids,attention_mask=attention_mask,
             token_type_ids=token_type_ids, position_ids=position_ids,head_mask=head_mask,

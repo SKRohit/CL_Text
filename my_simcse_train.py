@@ -35,7 +35,7 @@ from arguments import ModelArguments, DataTrainingArguments, OurTrainingArgument
 from losses.losses import SimCSELoss
 
 
-MAX_GPU_BATCH_SIZE = 8
+MAX_GPU_BATCH_SIZE = 128
 logger = logging.getLogger(__name__)
 
 def training_fucntion(model_args, data_args, training_args):
@@ -43,14 +43,13 @@ def training_fucntion(model_args, data_args, training_args):
     
     # Set seed before initializing model.
     set_seed(training_args.seed)
-    gradient_accumulation_steps=2
+    gradient_accumulation_steps=4
     # In distributed training, the load_dataset function guarantee that only one local process can concurrently
     # download the dataset.
     data_files = {}
     if data_args.train_file is not None:
         data_files["train"] = data_args.train_file
     datasets = load_dataset(data_args.train_file,)# cache_dir="./data/",)# delimiter="\t" if "tsv" in data_args.train_file else ",")
-    
     #
     # Distributed training:
     # The .from_pretrained methods guarantee that only one local process can concurrently
@@ -86,13 +85,8 @@ def training_fucntion(model_args, data_args, training_args):
 
     if model_args.model_name_or_path:
         if 'simcse' in model_args.model_name_or_path:
-            model = PretrainedSimCSEForCL.from_pretrained(
-                model_args.model_name_or_path,
-                from_tf=bool(".ckpt" in model_args.model_name_or_path),
+            model = PretrainedSimCSEForCL(
                 config=config,
-                cache_dir=model_args.cache_dir,
-                revision=model_args.model_revision,
-                use_auth_token=True if model_args.use_auth_token else None,
                 model_args=model_args
             )
             if model_args.do_mlm:
@@ -148,7 +142,7 @@ def training_fucntion(model_args, data_args, training_args):
     prepare_cl_features = partial(data_utils.prepare_cl_features, tokenizer=tokenizer, sent0_cname=sent0_cname, sent1_cname=sent1_cname,)
     my_cl_collator = partial(data_utils.my_cl_collator, tokenizer=tokenizer,mlm=model_args.do_mlm)
     
-    train_dataset = datasets["test"].map(prepare_cl_features,batched=True,
+    train_dataset = datasets["train"].map(prepare_cl_features,batched=True,
             num_proc=data_args.preprocessing_num_workers,
             remove_columns=column_names,
             load_from_cache_file=not data_args.overwrite_cache,
@@ -159,27 +153,28 @@ def training_fucntion(model_args, data_args, training_args):
             load_from_cache_file=not data_args.overwrite_cache,
         )
 
-    train_dl = DataLoader(train_dataset,batch_size=3, collate_fn=my_cl_collator)
-    val_dl = DataLoader(val_dataset,batch_size=3, collate_fn=my_cl_collator)
+    train_dl = DataLoader(train_dataset,batch_size=data_args.batch_size, collate_fn=my_cl_collator)
+    val_dl = DataLoader(val_dataset,batch_size=data_args.batch_size*2, collate_fn=my_cl_collator)
 
     if data_args.batch_size > MAX_GPU_BATCH_SIZE:
         gradient_accumulation_steps = data_args.batch_size // MAX_GPU_BATCH_SIZE
-        batch_size = MAX_GPU_BATCH_SIZE
+        data_args.batch_size = MAX_GPU_BATCH_SIZE
 
     model = model.to(accelerator.device)
-    optimizer = AdamW(params=model.parameters(), lr=1/100000, correct_bias=True)
+    optimizer = AdamW(params=model.parameters(), lr=training_args.learning_rate, correct_bias=True)
     scheduler = get_linear_schedule_with_warmup(optimizer, 
                     num_warmup_steps=100, 
                     num_training_steps=(training_args.num_train_epochs * len(train_dl)//gradient_accumulation_steps),
                     )
-    loss_func = SimCSELoss(temp=0.005, device=accelerator.device)
+    loss_func = SimCSELoss(temp=model_args.temp, device=accelerator.device)
+
+    model, optimizer, train_dl, val_dl = accelerator.prepare(model, optimizer, train_dl, val_dl)
 
     for epoch in range(int(training_args.num_train_epochs)):
         accelerator.print(f"Training Epoch {epoch+1} Started.")
         model.train()
-        total_train_loss,total_eval_loss = 0,0
+        total_train_loss = 0
         for step, batch in enumerate(train_dl):
-
             batch = {k:v.to(accelerator.device) for k,v in batch.items()}
             outputs = model(**batch)
             if model_args.do_mlm:
@@ -198,8 +193,9 @@ def training_fucntion(model_args, data_args, training_args):
             
             torch.cuda.empty_cache()
         ######## EVALUATIOn ON VALIDATION SET ###########
-            if (step+1)%training_args.eval_steps==0:
+            if (step+1)%training_args.eval_steps==0 or (step+1)==len(train_dl):
                 model.eval()
+                total_eval_loss=0
                 for step, batch in enumerate(val_dl):
                     batch = {k:v.to(accelerator.device) for k,v in batch.items()}
                     with torch.no_grad():
@@ -210,19 +206,19 @@ def training_fucntion(model_args, data_args, training_args):
                         loss = loss_func(outputs.pooler_output)
                     total_eval_loss += loss.item()
                 
-                accelerator.print(f"epoch {epoch}: train_loss: {total_train_loss/len(train_dl)}, \
-                val_loss: {total_eval_loss/len(val_dl)},")
+                accelerator.print(f"epoch {epoch+1}: train_loss: {total_train_loss/len(train_dl)}, val_loss: {total_eval_loss/len(val_dl)},")
+                total_train_loss = 0
 
-        # save the model if metric on validation set increases
-        if total_eval_loss > data_args.best_eval_metric:   
-            accelerator.save({
-            'epoch': epoch,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'scheduler_state_dict': scheduler.state_dict(),
-            }, f"{training_args.output_dir}/{epoch}_{total_eval_loss}.checkpoint.pth.tar")
-            data_args.best_eval_metric = total_eval_loss
-            accelerator.print("\n\n\n Best Model is being Saved \n\n\n")
+                # save the model if metric on validation set increases
+                if total_eval_loss < data_args.best_eval_metric:   
+                    accelerator.save({
+                    'epoch': epoch,
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'scheduler_state_dict': scheduler.state_dict(),
+                    }, f"{training_args.output_dir}/{epoch+1}_{total_eval_loss}.checkpoint.pth.tar")
+                    data_args.best_eval_metric = total_eval_loss
+                    accelerator.print("\n\n\n Best Model is being Saved \n\n\n")
 
 if __name__ == "__main__":
 

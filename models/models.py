@@ -132,14 +132,15 @@ def cl_init(cls, config):
     Contrastive learning class init function.
     """
     
-    # cls.pooler_type = cls.model_args.pooler_type
     cls.pooler = Pooler(cls.model_args.pooler_type)
     if cls.model_args.pooler_type == "cls":
-        if hasattr(cls, "model"):
-            cls.mlp = cls.model.pooler
-            cls.model.pooler = None
         cls.mlp = MLPLayer(config)
-    cls.init_weights()
+        if hasattr(cls, "model"):
+            cls.mlp.dense = cls.model.pooler.dense
+            cls.mlp.activation = cls.model.pooler.activation
+            cls.model.pooler = None
+            
+    # cls.init_weights()
 
 
 def cl_forward(cls,encoder,input_ids=None,attention_mask=None,token_type_ids=None,
@@ -207,7 +208,7 @@ class PretrainedSimCSEForCL(SimCSEPreTrainedModel):
     def __init__(self, config, *model_args, **model_kargs):
         super().__init__(config)
         self.model_args = model_kargs["model_args"]
-        self.model = AutoModel.from_config(config,)
+        self.model = AutoModel.from_pretrained(config._name_or_path)
 
         if self.model_args.do_mlm:
             if "BertModel" in self.config.architectures:

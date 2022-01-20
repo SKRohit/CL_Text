@@ -1,39 +1,10 @@
-from datasets import load_dataset
-import random
+from random import randint
 import torch
-from torch.utils.data import Dataset
 from transformers import DataCollatorWithPadding
 
-back_trans_data = None
 
-
-class SCANTextDataset(Dataset):
-    def __init__(self, dataset, nbr_indices, text_col, text_transform, keep_num_nbr=None):
-        self.dataset = dataset
-        if text_col not in self.dataset.column_names:
-            raise ValueError(f"{text_col} not in dataset")
-        self.text_col = text_col
-        self.nbr_indices = nbr_indices
-        self.text_transform = text_transform
-        if keep_num_nbr is not None:
-            self.nbr_indices = self.nbr_indices[:,:keep_num_nbr]
-    
-    def __len__(self):
-        return len(self.dataset)
-    
-    def __getitem__(self, index):
-        output = {}
-        output["sample"] = self.dataset[index][self.text_col]
-        nbrs = self.nbr_indices[index]
-        nbr_index = random.randint(0,len(nbrs)-1)
-        output["nbr"] = self.dataset[int(nbrs[nbr_index])][self.text_col]
-        if self.text_transform:
-            output["sample"] = self.text_transform(index, output["sample"])
-            output["nbr"] = self.text_transform(index, output["nbr"])
-        return output
-
-def prepare_scan_features(examples, text_col, tokenizer):
-    nbr_cnames = [k for k in examples if k.startswith("nbr_")]
+def prepare_scan_features(examples, text_col, tokenizer, prefix="nbr_"):
+    nbr_cnames = [k for k in examples if k.startswith(prefix)]
     total = len(examples[text_col])
 
     for idx in range(total):
@@ -56,21 +27,28 @@ def prepare_scan_features(examples, text_col, tokenizer):
     return features
 
 
-def my_scan_collator(features, tokenizer, nbr_in_data, num_nbr=None, sep_nbr=False, mlm=False):
+def my_scan_collator(features, tokenizer, nbr_in_data, num_nbr=None, sep_nbr=False, num_aug=None, augment=True, aug_dataset=None, mlm=False):
     special_keys = ['input_ids', 'attention_mask', 'token_type_ids', 'mlm_input_ids', 'mlm_labels']
     
     if num_nbr is not None:
         assert nbr_in_data >= num_nbr
-        num_nbr = random.randint(1,num_nbr)
+        num_nbr = randint(1,num_nbr)
     else:
-        num_nbr = random.randint(1,nbr_in_data)
-    
+        num_nbr = randint(1,nbr_in_data)
+
     flat_features = {k:[] for k in special_keys}
     for x in ["text", "nbr_"+str(num_nbr)]:
         for k in special_keys:
             for feature in features:
                 if feature.get(x+"_"+k):
-                    flat_features[k].append(feature[x+"_"+k])
+                    if augment and aug_dataset:
+                        aug_data = aug_dataset[feature['index']]
+                        assert aug_data['index']==feature['index'], "Mismatch in augmentation"
+                        cname = "aug_"+str(randint(0,num_aug-1))+"_"+k
+                        flat_features[k].append(aug_data[cname])
+                    else:
+                        flat_features[k].append(feature[x+"_"+k])
+
     flat_features = {k:torch.tensor(v) for k,v in flat_features.items() if v}
 
     batch = DataCollatorWithPadding(tokenizer, padding="longest", return_tensors="pt")(flat_features)

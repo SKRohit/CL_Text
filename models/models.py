@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from multiprocessing.managers import ValueProxy
 import torch
 import torch.nn as nn
 
@@ -201,6 +202,35 @@ def cl_forward(cls,encoder,input_ids=None,attention_mask=None,token_type_ids=Non
         last_hidden_state=outputs.last_hidden_state,
         hidden_states=outputs.hidden_states,
         )
+
+
+class SCANClustering(nn.Module):
+    def __init__(self, config, model_args) -> None:
+        super().__init__()
+        self.backbone = PretrainedSimCSEForCL(config=config, model_args=model_args)
+        self.n_heads = model_args.n_heads
+        assert(self.n_heads>0)
+        self.cluster_head = nn.ModuleList([nn.Linear(config.hidden_size, model_args.n_clusters) for _ in range(self.n_heads)])
+
+    def forward(self, features, forward_pass="default"):
+        if forward_pass=="default":
+            features = self.backbone(**features)
+            out = [cluster_head(features) for cluster_head in self.cluster_head]
+        
+        elif forward_pass=="backbone":
+            out = self.backbone(**features)
+
+        elif forward_pass=="head" and isinstance(features,torch.tensor):
+            out = [cluster_head(features) for cluster_head in self.cluster_head]
+        
+        elif forward_pass=="return_all":
+            features = self.backbone(**features)
+            out = {"features":features, "output":[cluster_head(features) for cluster_head in self.cluster_head]}
+
+        else:
+            raise ValueError(f"Invalid forward pass {forward_pass}")
+
+        return out
 
 class PretrainedSimCSEForCL(SimCSEPreTrainedModel):
     _keys_to_ignore_on_load_missing = [r"position_ids"]

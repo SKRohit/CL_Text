@@ -20,7 +20,6 @@ class ModelArguments:
         default=None,
         metadata={
             "help": "The model checkpoint for weights initialization."
-            "Don't set if you want to train a model from scratch."
         },
     )
     model_type: Optional[str] = field(
@@ -53,7 +52,12 @@ class ModelArguments:
         },
     )
 
-    # SimCSE's arguments
+    rev_model_name_or_path: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "The model checkpoint for weights initialization."
+        },
+    )
     temp: float = field(
         default=0.05,
         metadata={
@@ -119,12 +123,40 @@ class DataTrainingArguments:
         metadata={"help": "The number of processes to use for the preprocessing."},
     )
 
-    # SimCSE's arguments
+    
     batch_size: int = field(default=4, metadata={"help": "Batch size for training."})
     best_eval_metric: Optional[float] = field(default=-math.inf, metadata={"help": "The best metric value to use for early stopping."})
     train_file: Optional[str] = field(
         default=None, 
         metadata={"help": "The training data file (.txt or .csv)."}
+    )
+    infer_file: Optional[str] = field(
+        default=None, 
+        metadata={"help": "Inference data file (.txt or .csv)."}
+    )
+    save_file_path: Optional[str] = field(
+        default=None, 
+        metadata={"help": "Path for saving (.txt or .csv)."}
+    )
+    split_name: Optional[str] = field(
+        default="train", 
+        metadata={"help": "Name of the data split e.g. train, valid etc."}
+    )
+    text_col: Optional[str] = field(
+        default="text", 
+        metadata={"help": "Name of the column containing actual text data."}
+    )
+    max_length: Optional[int] = field(
+        default=256,
+        metadata={
+            "help": "The maximum total generated output sequence length."
+        },
+    )
+    num_beams: Optional[int] = field(
+        default=4,
+        metadata={
+            "help": "Beam length to be used during text generation."
+        },
     )
     max_seq_length: Optional[int] = field(
         default=32,

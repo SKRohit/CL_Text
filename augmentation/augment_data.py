@@ -73,10 +73,10 @@ def inference_fucntion(model_args, data_args):
             outputs = rev_model.generate(inputs["input_ids"],max_length=data_args.max_length, num_beams=data_args.num_beams,)
             for output in outputs:
                 translated_text.append(tokenizer.decode(output,skip_special_tokens=True))
-            print(f"\rBatch {i+1} Finished.", flush=True)
+            print(f"\rBatch {int(i/data_args.batch_size+1)} Finished.", flush=True)
 
     aug_cols = [col for col in column_names if col.startswith("aug_")]
-    new_aug_col = "aug_"+str(len(aug_cols))
+    new_aug_col = "aug_"+str(len(aug_cols) if len(aug_cols) else 1)
 
     if data_args.save_file_path.endswith(".csv"):
         if not data_args.save_only_new:

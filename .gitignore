@@ -135,3 +135,5 @@ result
 .venv-cu11
 
 abc.py
+demo/
+figure/

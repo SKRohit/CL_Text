@@ -187,10 +187,7 @@ def cl_forward(cls,encoder,input_ids=None,attention_mask=None,token_type_ids=Non
     if not sent_emb:
         pooler_output = pooler_output.view((batch_size, num_sent, pooler_output.size(-1))) # (bs, num_sent, hidden)
 
-    if sent_emb:
-        if cls.model_args.pooler_type == "cls" and not cls.model_args.mlp_only_train:
-            pooler_output = cls.mlp(pooler_output)
-    elif cls.model_args.pooler_type == "cls":
+    if cls.model_args.pooler_type == "cls" and not cls.model_args.mlp_only_train:
         pooler_output = cls.mlp(pooler_output)
 
     if not return_dict:

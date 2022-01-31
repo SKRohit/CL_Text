@@ -172,9 +172,10 @@ def training_fucntion(model_args, data_args, training_args):
 
     for epoch in range(int(training_args.num_train_epochs)):
         accelerator.print(f"Training Epoch {epoch+1} Started.")
-        model.train()
+        
         total_train_loss = 0
         for step, batch in enumerate(train_dl):
+            model.train()
             batch = {k:v.to(accelerator.device) for k,v in batch.items()}
             outputs = model(**batch)
             if model_args.do_mlm:

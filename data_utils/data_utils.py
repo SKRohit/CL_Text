@@ -15,14 +15,14 @@ def prepare_scan_features(examples, text_col, tokenizer, prefix="nbr_"):
                 examples[cname][idx] = " "
     
     sentences = examples[text_col] + [examples[cname][idx] for cname in nbr_cnames for idx in range(total)]
-    sent_features = tokenizer(sentences,padding=True,return_tensors="pt")
+    sent_features = tokenizer(sentences,padding=True,truncation=True, max_length=256,)
     features = {}
     for key in sent_features:
         temp = sent_features[key]
-        features[text_col+'_'+key] = sent_features[key][:total].tolist()
+        features[text_col+'_'+key] = sent_features[key][:total]
         i = total
         for cname in nbr_cnames:
-            features[cname+'_'+key] = temp[i:i+total].tolist()
+            features[cname+'_'+key] = temp[i:i+total]
             i += total
     return features
 
@@ -44,14 +44,14 @@ def my_scan_collator(features, tokenizer, nbr_in_data, num_nbr=None, sep_nbr=Fal
                     if augment and aug_dataset:
                         aug_data = aug_dataset[feature['index']]
                         assert aug_data['index']==feature['index'], "Mismatch in augmentation"
-                        cname = "aug_"+str(randint(0,num_aug-1))+"_"+k
+                        cname = "aug_"+str(randint(1,num_aug))+"_"+k
                         flat_features[k].append(aug_data[cname])
                     else:
                         flat_features[k].append(feature[x+"_"+k])
 
-    flat_features = {k:torch.tensor(v) for k,v in flat_features.items() if v}
+    flat_features = {k:v for k,v in flat_features.items() if v}
 
-    batch = DataCollatorWithPadding(tokenizer, padding="longest", return_tensors="pt")(flat_features)
+    batch = DataCollatorWithPadding(tokenizer, padding=True, return_tensors="pt")(flat_features)
 
     if mlm:            
         batch["mlm_input_ids"], batch["mlm_labels"] = mask_tokens(batch["input_ids"],tokenizer=tokenizer)

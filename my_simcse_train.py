@@ -157,14 +157,14 @@ def training_fucntion(model_args, data_args, training_args):
     val_dl = DataLoader(val_dataset,batch_size=data_args.batch_size*2, collate_fn=my_cl_collator)
 
     if data_args.batch_size > MAX_GPU_BATCH_SIZE:
-        gradient_accumulation_steps = data_args.batch_size // MAX_GPU_BATCH_SIZE
+        training_args.gradient_accumulation_steps = data_args.batch_size // MAX_GPU_BATCH_SIZE
         data_args.batch_size = MAX_GPU_BATCH_SIZE
 
     model = model.to(accelerator.device)
     optimizer = AdamW(params=model.parameters(), lr=training_args.learning_rate, correct_bias=True)
     scheduler = get_linear_schedule_with_warmup(optimizer, 
                     num_warmup_steps=100, 
-                    num_training_steps=(training_args.num_train_epochs * len(train_dl)//gradient_accumulation_steps),
+                    num_training_steps=(training_args.num_train_epochs * len(train_dl)//training_args.gradient_accumulation_steps),
                     )
     loss_func = SimCSELoss(temp=model_args.temp, device=accelerator.device)
 
@@ -183,9 +183,9 @@ def training_fucntion(model_args, data_args, training_args):
             else:
                 loss = loss_func(outputs.pooler_output)
             total_train_loss += loss.item()
-            loss = loss / gradient_accumulation_steps
+            loss = loss / training_args.gradient_accumulation_steps
             accelerator.backward(loss)
-            if step % gradient_accumulation_steps == 0:
+            if step % training_args.gradient_accumulation_steps == 0:
                 accelerator.print(f"\rUpdating Weights after {step+1}/{len(train_dl)} steps.", end='', flush=True)
                 accelerator.clip_grad_norm_(model.parameters(),training_args.max_grad_norm)
                 optimizer.step()

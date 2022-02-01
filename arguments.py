@@ -16,10 +16,11 @@ class ModelArguments:
     """
 
     # Huggingface's original arguments
-    model_name_or_path: Optional[str] = field(
+    model_name_or_path: str = field(
         default=None,
         metadata={
             "help": "The model checkpoint for weights initialization."
+            "Don't set if you want to train a model from scratch."
         },
     )
     model_type: Optional[str] = field(
@@ -52,12 +53,7 @@ class ModelArguments:
         },
     )
 
-    rev_model_name_or_path: Optional[str] = field(
-        default=None,
-        metadata={
-            "help": "The model checkpoint for weights initialization."
-        },
-    )
+    # SimCSE's arguments
     temp: float = field(
         default=0.05,
         metadata={
@@ -94,7 +90,32 @@ class ModelArguments:
             "help": "Use MLP only during training"
         }
     )
-
+    # SCAN Args
+    entropy_weight: float = field(
+        default=2,
+        metadata={
+            "help": "Temperature for softmax."
+        }
+    )
+    n_heads: int = field(
+        default=2,
+        metadata={
+            "help": "No of Heads in Scan Model"
+        }
+    )
+    n_clusters: int = field(
+        default=16,
+        metadata={
+            "help": "No of Classes in Dataset"
+        }
+    )
+    pretrained_weight_path: str = field(
+        default=None,
+        metadata={
+            "help": "Path of model weights finetuned with SimCSE Loss"
+        },
+    )
+    
 
 @dataclass
 class DataTrainingArguments:
@@ -123,40 +144,24 @@ class DataTrainingArguments:
         metadata={"help": "The number of processes to use for the preprocessing."},
     )
 
-    
-    batch_size: int = field(default=4, metadata={"help": "Batch size for training."})
-    best_eval_metric: Optional[float] = field(default=-math.inf, metadata={"help": "The best metric value to use for early stopping."})
+    # SimCSE's arguments
+    batch_size: int = field(
+        default=16, metadata={"help": "Batch size for training."}
+    )
+    best_eval_metric: Optional[float] = field(
+        default=math.inf, metadata={"help": "The best metric value to use for early stopping."}
+    )
     train_file: Optional[str] = field(
         default=None, 
         metadata={"help": "The training data file (.txt or .csv)."}
     )
-    infer_file: Optional[str] = field(
+    test_file: Optional[str] = field(
         default=None, 
-        metadata={"help": "Inference data file (.txt or .csv)."}
+        metadata={"help": "The test data file (.txt or .csv)."}
     )
-    save_file_path: Optional[str] = field(
+    validation_file: Optional[str] = field(
         default=None, 
-        metadata={"help": "Path for saving (.txt or .csv)."}
-    )
-    split_name: Optional[str] = field(
-        default="train", 
-        metadata={"help": "Name of the data split e.g. train, valid etc."}
-    )
-    text_col: Optional[str] = field(
-        default="text", 
-        metadata={"help": "Name of the column containing actual text data."}
-    )
-    max_length: Optional[int] = field(
-        default=256,
-        metadata={
-            "help": "The maximum total generated output sequence length."
-        },
-    )
-    num_beams: Optional[int] = field(
-        default=4,
-        metadata={
-            "help": "Beam length to be used during text generation."
-        },
+        metadata={"help": "The validation data file (.txt or .csv)."}
     )
     max_seq_length: Optional[int] = field(
         default=32,
@@ -176,14 +181,57 @@ class DataTrainingArguments:
         default=0.15, 
         metadata={"help": "Ratio of tokens to mask for MLM (only effective if --do_mlm)"}
     )
+    # SCAN Args
+    use_augmentation: bool = field(
+        default=True, metadata={"help": "Whether to use data augmentation or not during training."}
+    )
+    nbr_prefix: Optional[str] = field(
+        default="nbr_", 
+        metadata={"help": "Prefix wit which column names of neighbour data start with."}
+    )
+    text_col: Optional[str] = field(
+        default="text", 
+        metadata={"help": "Prefix wit which column names of neighbour data start with."}
+    )
+    aug_prefix: Optional[str] = field(
+        default="aug_", 
+        metadata={"help": "Prefix wit which column names of augmented data start with."}
+    )
+    num_nbr: int = field(
+        default=5, 
+        metadata={"help": "Number of neighbours to use during training.)"}
+    )
+    aug_dataset_name: Optional[str] = field(
+        default=None, metadata={"help": "The name of the augmented dataset to use."}
+    )
+    aug_train_file: Optional[str] = field(
+        default=None, 
+        metadata={"help": "The augmented training data file (.txt or .csv)."}
+    )
+    aug_test_file: Optional[str] = field(
+        default=None, 
+        metadata={"help": "The augmented test data file (.txt or .csv)."}
+    )
+    aug_validation_file: Optional[str] = field(
+        default=None, 
+        metadata={"help": "The augmented validation data file (.txt or .csv)."}
+    )
 
     def __post_init__(self):
         if self.dataset_name is None and self.train_file is None and self.validation_file is None:
             raise ValueError("Need either a dataset name or a training/validation file.")
-        # else:
-        #     if self.train_file is not None:
-        #         extension = self.train_file.split(".")[-1]
-        #         assert extension in ["csv", "json", "txt"], "`train_file` should be a csv, a json or a txt file."
+        else:
+            if self.train_file is not None:
+                extension = self.train_file.split(".")[-1]
+                assert extension in ["csv", "json", "txt"], "`train_file` should be a csv, a json or a txt file."
+
+        if self.use_augmentation:
+            if self.aug_dataset_name is None and self.aug_train_file is None and self.aug_validation_file is None:
+                raise ValueError("Need either a dataset name or a training/validation file.")
+            else:
+                if self.aug_train_file is not None:
+                    extension = self.aug_train_file.split(".")[-1]
+                    assert extension in ["csv", "json", "txt"], "`train_file` should be a csv, a json or a txt file."
 
 
 @dataclass
@@ -192,6 +240,15 @@ class OurTrainingArguments(TrainingArguments):
     ## By default, we evaluate STS (dev) during training (for selecting best checkpoints) and evaluate 
     ## both STS and transfer tasks (dev) at the end of training. Using --eval_transfer will allow evaluating
     ## both STS and transfer tasks (dev) during training.
+    update_cluster_head_only: bool = field(
+        default=False, metadata={"help": "Whether to update complete model."}
+    )
+    keep_eval_mode: bool = field(
+        default=False,
+        metadata={
+            "help": "Keep in eval mode during training, to use no dropout"
+        }
+    )
     eval_transfer: bool = field(
         default=False,
         metadata={"help": "Evaluate transfer task dev sets (in validation)."}

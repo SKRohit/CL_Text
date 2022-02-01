@@ -9,7 +9,7 @@ import random
 from functools import partial
 from torch.utils.data import DataLoader
 
-from accelerate import Accelerator, DistributedType
+from accelerate import Accelerator, DistributedDataParallelKwargs
 
 from datasets import load_dataset
 import data_utils
@@ -37,9 +37,11 @@ from losses.losses import SimCSELoss
 
 MAX_GPU_BATCH_SIZE = 128
 logger = logging.getLogger(__name__)
+ddp_args = DistributedDataParallelKwargs()
+ddp_args.find_unused_parameters = True
 
 def training_fucntion(model_args, data_args, training_args):
-    accelerator = Accelerator(fp16=True, cpu=False)
+    accelerator = Accelerator(fp16=True, cpu=False,kwargs_handlers=[ddp_args])
     
     # Set seed before initializing model.
     set_seed(training_args.seed)

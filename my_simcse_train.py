@@ -171,7 +171,8 @@ def training_fucntion(model_args, data_args, training_args):
     loss_func = SimCSELoss(temp=model_args.temp, device=accelerator.device)
 
     model, optimizer, train_dl, val_dl = accelerator.prepare(model, optimizer, train_dl, val_dl)
-
+    optimizer.zero_grad()
+    
     for epoch in range(int(training_args.num_train_epochs)):
         accelerator.print(f"Training Epoch {epoch+1} Started.")
         

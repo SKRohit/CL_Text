@@ -151,7 +151,7 @@ def training_fucntion(model_args, data_args, training_args):
                     )
     loss_func = SCANLoss(entropy_weight=model_args.entropy_weight,)
     model, optimizer, train_dl, val_dl = accelerator.prepare(model, optimizer, train_dl, val_dl)
-
+    optimizer.zero_grad()
 
     for epoch in range(int(training_args.num_train_epochs)):
         

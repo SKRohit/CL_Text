@@ -4,7 +4,7 @@
 # If you want to train it with multiple GPU cards, see "run_sup_example.sh"
 # about how to use PyTorch's distributed data parallel.
 
-python my_simcse_train.py \
+accelerate launch my_simcse_train.py \
     --model_name_or_path princeton-nlp/sup-simcse-bert-base-uncased \
     --train_file ag_news \
     --output_dir result/my-unsup-simcse-bert-base-uncased \
